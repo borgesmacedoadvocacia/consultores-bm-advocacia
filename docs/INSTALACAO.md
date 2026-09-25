@@ -161,7 +161,7 @@ Enter envia, Shift+Enter quebra linha.
 | "Não encontrei a pasta do acervo de ..." | nome da pasta mudou — grave `PASTA_<id>` com o ID certo |
 | "Drive is not defined" | o serviço avançado Drive (v3) não foi habilitado (passo 2) |
 | Resposta cortada com aviso de limite de tempo | o Apps Script derruba a execução em 6 min; peça em partes menores |
-| Anexo grande recusado | acima de 12 MB: coloque o arquivo direto na pasta do Drive e cite o nome dele |
+| Anexo grande recusado | acima de 8 MB: coloque o arquivo direto na pasta do Drive e cite o nome dele |
 | Pesquisa parada em "rodando" | `destravarPesquisas` devolve à fila na hora seguinte |
 | Nenhum usuário cadastrado | rode `criarUsuario(...)` (passo 5) |
 

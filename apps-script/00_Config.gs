@@ -26,8 +26,8 @@ var APP = {
   maxVoltasFerramenta: 10,
 
   /* Anexos (por mensagem). O teto da requisição da API é 32 MB. */
-  maxMbPorArquivo: 12,
-  maxMbPorMensagem: 24,
+  maxMbPorArquivo: 8,
+  maxMbPorMensagem: 16,
   maxCharsTextoAnexo: 180000,
 
   /* Sessão do operador. */

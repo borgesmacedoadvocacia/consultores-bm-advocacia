@@ -57,7 +57,8 @@ api.anthropic.com  ·  claude-opus-5
 **Formatos que o consultor lê nos anexos:** PDF (vai direto para o modelo, com citação de
 página), imagens PNG/JPG/GIF/WebP (análise visual), TXT/MD/CSV/TSV/JSON/XML/HTML, XLSX/XLS
 e DOCX/DOC (convertidos via Drive), além de Documentos e Planilhas Google que já estejam na
-pasta. Teto de 12 MB por arquivo e 24 MB por mensagem.
+pasta. Teto de 8 MB por arquivo e 16 MB por mensagem — arquivo maior que isso vai direto para a
+pasta do Drive e é citado pelo nome na pergunta.
 
 **Conversas ficam no Drive**, em `_app/conversas/` dentro da pasta de cada consultor — o
 histórico é acervo do escritório, não estado de tela.

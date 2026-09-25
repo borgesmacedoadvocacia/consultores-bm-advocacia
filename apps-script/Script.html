@@ -295,8 +295,8 @@ function ultimoIdDe(msgs) {
 function pegarArquivos(files) {
   if (!files || !files.length) return;
   Array.prototype.forEach.call(files, function (f) {
-    if (f.size > 12 * 1024 * 1024) {
-      alerta('Arquivo grande', '"' + f.name + '" passa de 12 MB. Coloque o arquivo direto ' +
+    if (f.size > 8 * 1024 * 1024) {
+      alerta('Arquivo grande', '"' + f.name + '" passa de 8 MB. Coloque o arquivo direto ' +
              'na pasta do consultor no Drive e cite o nome dele na pergunta.');
       return;
     }
