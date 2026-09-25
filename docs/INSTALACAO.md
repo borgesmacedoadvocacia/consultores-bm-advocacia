@@ -85,6 +85,11 @@ criarUsuario('gabriel', 'uma-senha-forte-aqui', 'Gabriel Macedo');
 criarUsuario('maria',   'outra-senha-forte',    'Maria', ['saude']);  // só um consultor
 ```
 
+**Sem editar código (recomendado):** crie as propriedades `SETUP_USUARIO` e `SETUP_SENHA`
+(e, se quiser, `SETUP_NOME` e `SETUP_CONSULTORES`) em *Propriedades do script* e rode
+**`criarUsuarioDaPropriedade()`**. Ela cria o usuário e apaga as propriedades em seguida,
+para a senha em texto não ficar guardada em lugar nenhum.
+
 Só o hash da senha é gravado (SHA-256 com sal, 10.000 iterações). Outras funções úteis:
 `listarUsuarios()`, `desativarUsuario('login')`, e para redefinir uma senha basta chamar
 `criarUsuario` de novo com o mesmo login.

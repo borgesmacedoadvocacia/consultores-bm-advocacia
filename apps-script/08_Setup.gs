@@ -92,6 +92,44 @@ function criarUsuario(login, senha, nome, consultores) {
   return msg;
 }
 
+/**
+ * Passo 3 sem editar código — o jeito recomendado para não deixar senha no
+ * arquivo. Em Configurações do projeto › Propriedades do script, crie:
+ *
+ *   SETUP_USUARIO      Admin
+ *   SETUP_SENHA        a senha escolhida
+ *   SETUP_NOME         Administrador            (opcional)
+ *   SETUP_CONSULTORES  saude,bancario           (opcional; vazio = todos)
+ *
+ * Depois rode esta função. Ela cria o usuário (guardando só o hash da senha) e
+ * APAGA as quatro propriedades, para a senha em texto não ficar guardada.
+ */
+function criarUsuarioDaPropriedade() {
+  var p = props_();
+  var login = (p.getProperty('SETUP_USUARIO') || '').trim();
+  var senha = p.getProperty('SETUP_SENHA') || '';
+  var nome  = (p.getProperty('SETUP_NOME') || '').trim() || login;
+  var quais = (p.getProperty('SETUP_CONSULTORES') || '').trim();
+
+  if (!login || !senha) {
+    throw new Error('Crie as propriedades SETUP_USUARIO e SETUP_SENHA em ' +
+      'Configurações do projeto › Propriedades do script e rode esta função de novo.');
+  }
+
+  var consultores = quais
+    ? quais.split(',').map(function (x) { return x.trim(); }).filter(String)
+    : null;
+
+  var msg = criarUsuario(login, senha, nome, consultores);
+
+  ['SETUP_USUARIO', 'SETUP_SENHA', 'SETUP_NOME', 'SETUP_CONSULTORES']
+    .forEach(function (k) { p.deleteProperty(k); });
+
+  msg += ' — as propriedades SETUP_* foram apagadas.';
+  console.log(msg);
+  return msg;
+}
+
 /** Desativa um usuário sem apagar o histórico dele. */
 function desativarUsuario(login) {
   var lista = lerUsuarios_();
