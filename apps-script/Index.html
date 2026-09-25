@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-tema="escuro">
+<head>
+<meta charset="UTF-8">
+<base target="_top">
+<title><?= APP_NOME ?></title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<?!= incluir('Estilo') ?>
+</head>
+<body>
+
+<!-- ======================= LOGIN ======================= -->
+<div id="login">
+  <form class="login-card" id="formLogin" autocomplete="on">
+    <div class="marca"><?= ESCRITORIO ?></div>
+    <h1>Consultores</h1>
+    <p class="sub">Entre com seu usuário do escritório para falar com os consultores.</p>
+
+    <div class="erro oculto" id="erroLogin"></div>
+
+    <div class="campo">
+      <label for="usuario">Usuário</label>
+      <input id="usuario" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false">
+    </div>
+    <div class="campo">
+      <label for="senha">Senha</label>
+      <input id="senha" name="password" type="password" autocomplete="current-password">
+    </div>
+
+    <button class="btn pri" id="btnEntrar" type="submit">Entrar</button>
+    <div class="login-pe">
+      Acesso registrado por usuário. Se esqueceu a senha, peça a redefinição a quem
+      administra o sistema.
+    </div>
+  </form>
+</div>
+
+<!-- ======================== APP ======================== -->
+<div id="app" class="oculto">
+
+  <aside id="lateral">
+    <div class="marca-topo">
+      <div class="nome">Consultores</div>
+      <div class="esc"><?= ESCRITORIO ?></div>
+    </div>
+
+    <div class="secao">
+      <div class="titulo">Com quem você quer falar</div>
+      <div id="listaConsultores"></div>
+    </div>
+
+    <div class="secao" style="padding-bottom:10px">
+      <button class="btn pri mini" id="btnNova" style="width:100%;justify-content:center">
+        + Nova conversa
+      </button>
+    </div>
+
+    <div class="secao" style="padding-bottom:0">
+      <div class="titulo">Conversas</div>
+    </div>
+    <div class="lista-conversas" id="listaConversas"></div>
+
+    <div class="rodape">
+      <div class="quem">
+        <b id="nomeUsuario">—</b>
+        <span id="loginUsuario"></span>
+      </div>
+      <button class="btn icone mini" id="btnTema" title="Alternar tema claro/escuro">◐</button>
+      <button class="btn icone mini" id="btnSair" title="Sair">⏻</button>
+    </div>
+  </aside>
+
+  <main>
+    <header>
+      <button class="btn icone btn-menu" id="btnMenu" title="Menu">☰</button>
+      <div class="quem-fala">
+        <h2 id="tituloConsultor">—</h2>
+        <p id="subConsultor"></p>
+      </div>
+      <button class="btn mini" id="btnAcervo" title="Reler a pasta do consultor">Atualizar acervo</button>
+      <button class="btn mini" id="btnDiag" title="Estado do sistema">Diagnóstico</button>
+    </header>
+
+    <div id="mensagens">
+      <div class="fio" id="fio"></div>
+    </div>
+
+    <div class="composer" id="composer">
+      <div class="caixa">
+        <div class="anexos oculto" id="anexos"></div>
+        <div class="linha-envio">
+          <textarea id="texto" rows="1"
+            placeholder="Pergunte ao consultor. Anexe petição, planilha, print ou PDF se ajudar."></textarea>
+          <button class="btn icone" id="btnAnexar" title="Anexar arquivos">📎</button>
+          <button class="btn pri" id="btnEnviar">Enviar</button>
+        </div>
+        <input type="file" id="arquivos" multiple class="oculto"
+               accept=".pdf,.txt,.md,.csv,.tsv,.json,.xml,.html,.xlsx,.xls,.docx,.doc,.png,.jpg,.jpeg,.gif,.webp">
+        <div class="dica">
+          Enter envia · Shift+Enter quebra linha · o consultor responde pelo acervo dele e
+          diz quando não sabe
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ====================== MODAL ======================== -->
+<div class="ov" id="ov">
+  <div class="modal">
+    <h3 id="modalTitulo">—</h3>
+    <p class="sub" id="modalSub"></p>
+    <div id="modalCorpo"></div>
+    <div class="acoes">
+      <button class="btn" id="btnFechaModal">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<?!= incluir('Script') ?>
+</body>
+</html>

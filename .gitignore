@@ -1,0 +1,9 @@
+# credenciais do clasp e id do projeto — nunca versionar
+.clasp.json
+.clasprc.json
+node_modules/
+
+# lixo de sistema
+desktop.ini
+Thumbs.db
+.DS_Store

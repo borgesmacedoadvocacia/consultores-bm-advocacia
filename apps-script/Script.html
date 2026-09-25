@@ -1,0 +1,660 @@
+<script>
+/* ==========================================================================
+   CONSULTORES BM ADVOCACIA — front-end
+   Só fala com o servidor por google.script.run, sempre mandando o token.
+   Nenhum dado de API aparece aqui.
+   ========================================================================== */
+
+var S = {
+  token: null,
+  usuario: null,
+  consultores: [],
+  consultorAtivo: null,
+  conversaId: null,
+  ultimoId: null,
+  anexos: [],           // {nome, mime, dadosBase64, bytes}
+  ocupado: false,
+  poll: null,
+  acervo: null
+};
+
+var $ = function (id) { return document.getElementById(id); };
+
+/* ------------------------------ arranque -------------------------------- */
+
+document.addEventListener('DOMContentLoaded', function () {
+  aplicarTema(localStorage.getItem('bm_consultores_tema') || 'escuro');
+  ligarEventos();
+
+  var guardado = localStorage.getItem('bm_consultores_token');
+  if (guardado) {
+    google.script.run
+      .withSuccessHandler(function (s) {
+        if (s) { entrou(s); } else { localStorage.removeItem('bm_consultores_token'); }
+      })
+      .withFailureHandler(function () { localStorage.removeItem('bm_consultores_token'); })
+      .retomarSessao(guardado);
+  }
+});
+
+function ligarEventos() {
+  $('formLogin').addEventListener('submit', function (ev) { ev.preventDefault(); entrar(); });
+  $('btnSair').addEventListener('click', sair);
+  $('btnTema').addEventListener('click', function () {
+    aplicarTema(document.documentElement.getAttribute('data-tema') === 'escuro' ? 'claro' : 'escuro');
+  });
+  $('btnNova').addEventListener('click', novaConversa);
+  $('btnEnviar').addEventListener('click', enviar);
+  $('btnAnexar').addEventListener('click', function () { $('arquivos').click(); });
+  $('arquivos').addEventListener('change', function (ev) { pegarArquivos(ev.target.files); });
+  $('btnAcervo').addEventListener('click', atualizarAcervo);
+  $('btnDiag').addEventListener('click', verDiagnostico);
+  $('btnFechaModal').addEventListener('click', function () { $('ov').classList.remove('on'); });
+  $('ov').addEventListener('click', function (ev) {
+    if (ev.target === $('ov')) $('ov').classList.remove('on');
+  });
+  $('btnMenu').addEventListener('click', function () {
+    $('lateral').classList.toggle('aberta');
+  });
+
+  var ta = $('texto');
+  ta.addEventListener('input', function () {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(190, ta.scrollHeight) + 'px';
+  });
+  ta.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); enviar(); }
+  });
+
+  /* arrastar arquivo para a janela */
+  var comp = $('composer');
+  ['dragenter', 'dragover'].forEach(function (e) {
+    document.addEventListener(e, function (ev) {
+      ev.preventDefault(); comp.classList.add('arrastando');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (e) {
+    document.addEventListener(e, function (ev) {
+      ev.preventDefault();
+      if (e === 'drop' && ev.dataTransfer && ev.dataTransfer.files) {
+        pegarArquivos(ev.dataTransfer.files);
+      }
+      comp.classList.remove('arrastando');
+    });
+  });
+}
+
+function aplicarTema(t) {
+  document.documentElement.setAttribute('data-tema', t);
+  localStorage.setItem('bm_consultores_tema', t);
+  $('btnTema').textContent = t === 'escuro' ? '☀' : '☾';
+  $('btnTema').title = t === 'escuro' ? 'Tema claro' : 'Tema escuro';
+}
+
+/* -------------------------------- login ---------------------------------- */
+
+function entrar() {
+  var u = $('usuario').value.trim();
+  var p = $('senha').value;
+  if (!u || !p) return erroLogin('Informe usuário e senha.');
+  $('btnEntrar').disabled = true;
+  $('btnEntrar').textContent = 'Entrando…';
+  esconderErroLogin();
+
+  google.script.run
+    .withSuccessHandler(function (s) {
+      $('btnEntrar').disabled = false;
+      $('btnEntrar').textContent = 'Entrar';
+      $('senha').value = '';
+      entrou(s);
+    })
+    .withFailureHandler(function (e) {
+      $('btnEntrar').disabled = false;
+      $('btnEntrar').textContent = 'Entrar';
+      erroLogin(limparErro(e));
+    })
+    .entrar(u, p);
+}
+
+function entrou(s) {
+  S.token = s.token;
+  S.usuario = s;
+  localStorage.setItem('bm_consultores_token', s.token);
+  $('login').classList.add('oculto');
+  $('app').classList.remove('oculto');
+  $('nomeUsuario').textContent = s.nome || s.usuario;
+  $('loginUsuario').textContent = s.usuario;
+  carregarPainel(null);
+}
+
+function sair() {
+  var t = S.token;
+  localStorage.removeItem('bm_consultores_token');
+  S = { token: null, consultores: [], anexos: [] };
+  google.script.run.sair(t);
+  location.reload();
+}
+
+function erroLogin(m) { $('erroLogin').textContent = m; $('erroLogin').classList.remove('oculto'); }
+function esconderErroLogin() { $('erroLogin').classList.add('oculto'); }
+
+function limparErro(e) {
+  var m = (e && e.message) ? e.message : String(e || 'Falha inesperada.');
+  if (m.indexOf('SESSAO_INVALIDA') >= 0) {
+    localStorage.removeItem('bm_consultores_token');
+    setTimeout(function () { location.reload(); }, 1200);
+    return 'Sua sessão expirou. Recarregando para você entrar de novo…';
+  }
+  return m.replace(/^Error:?\s*/, '');
+}
+
+/* -------------------------------- painel --------------------------------- */
+
+function carregarPainel(consultorId) {
+  google.script.run
+    .withSuccessHandler(function (d) {
+      S.consultores = d.consultores;
+      S.consultorAtivo = d.consultorAtivo;
+      S.acervo = d.acervo;
+      renderConsultores();
+      renderConversas(d.conversas);
+      renderCabecalho();
+      if (!S.conversaId) telaInicial();
+    })
+    .withFailureHandler(function (e) { alerta('Não deu para carregar o painel', limparErro(e)); })
+    .carregarPainel(S.token, consultorId || null);
+}
+
+function renderConsultores() {
+  var alvo = $('listaConsultores');
+  alvo.innerHTML = '';
+  S.consultores.forEach(function (c) {
+    var b = document.createElement('button');
+    b.className = 'consultor' + (c.id === S.consultorAtivo ? ' ativo' : '');
+    b.innerHTML =
+      '<span class="sigla" style="--c:' + c.cor + '">' + esc(c.icone) + '</span>' +
+      '<span class="txt"><span class="n">' + esc(c.curto) + '</span>' +
+      '<span class="d">' + esc(primeiraFrase(c.ambito)) + '</span></span>';
+    b.addEventListener('click', function () { trocarConsultor(c.id); });
+    alvo.appendChild(b);
+  });
+}
+
+function primeiraFrase(t) {
+  var s = String(t || '').split(/[.:]/)[0];
+  return s.length > 74 ? s.slice(0, 74) + '…' : s;
+}
+
+function trocarConsultor(id) {
+  if (S.ocupado) return alerta('Um instante', 'O consultor ainda está respondendo.');
+  if (id === S.consultorAtivo) return;
+  pararPoll();
+  S.consultorAtivo = id;
+  S.conversaId = null;
+  S.ultimoId = null;
+  S.anexos = [];
+  renderAnexos();
+  $('lateral').classList.remove('aberta');
+  carregarPainel(id);
+}
+
+function renderCabecalho() {
+  var c = achar(S.consultorAtivo);
+  $('tituloConsultor').textContent = c ? c.nome : '—';
+  var partes = [];
+  if (S.acervo) {
+    partes.push('Acervo: ' + S.acervo.pasta + ' · ' + S.acervo.total + ' arquivos');
+  }
+  $('subConsultor').textContent = partes.join(' · ');
+}
+
+function achar(id) {
+  for (var i = 0; i < S.consultores.length; i++) if (S.consultores[i].id === id) return S.consultores[i];
+  return null;
+}
+
+function renderConversas(lista) {
+  var alvo = $('listaConversas');
+  alvo.innerHTML = '';
+  if (!lista || !lista.length) {
+    alvo.innerHTML = '<div class="vazio">Nenhuma conversa ainda.</div>';
+    return;
+  }
+  lista.forEach(function (c) {
+    var b = document.createElement('button');
+    b.className = 'conversa-item' + (c.id === S.conversaId ? ' ativa' : '');
+    b.innerHTML = esc(c.titulo) +
+      '<span class="quando">' + esc(quando(c.atualizadaEm)) + ' · ' +
+      c.mensagens + ' msg</span>';
+    b.addEventListener('click', function () { abrir(c.id); });
+    alvo.appendChild(b);
+  });
+}
+
+function quando(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  var hoje = new Date();
+  var mesmoDia = d.toDateString() === hoje.toDateString();
+  return mesmoDia
+    ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
+/* ------------------------------ conversa --------------------------------- */
+
+function novaConversa() {
+  if (S.ocupado) return;
+  pararPoll();
+  S.conversaId = null;
+  S.ultimoId = null;
+  S.anexos = [];
+  renderAnexos();
+  telaInicial();
+  document.querySelectorAll('.conversa-item').forEach(function (n) { n.classList.remove('ativa'); });
+  $('texto').focus();
+}
+
+function telaInicial() {
+  var c = achar(S.consultorAtivo);
+  $('fio').innerHTML = '';
+  if (!c) return;
+  bolhaSistema(
+    '**' + c.nome + '.** ' + c.ambito + '\n\n' +
+    'Ele responde pelo acervo da pasta dele no Drive' +
+    (S.acervo ? ' (' + S.acervo.total + ' arquivos)' : '') +
+    ', cita os arquivos que usou e diz quando não tem base. Se o assunto for novo, ' +
+    'ele pesquisa e guarda um dossiê na pasta antes de responder. ' +
+    'Anexe petição, planilha, print ou PDF quando quiser que ele avalie o documento.');
+}
+
+function abrir(id) {
+  if (S.ocupado) return;
+  pararPoll();
+  google.script.run
+    .withSuccessHandler(function (conversa) {
+      S.conversaId = conversa.id;
+      $('fio').innerHTML = '';
+      (conversa.mensagens || []).forEach(function (m) { render(m); });
+      S.ultimoId = ultimoIdDe(conversa.mensagens);
+      rolar();
+      document.querySelectorAll('.conversa-item').forEach(function (n) { n.classList.remove('ativa'); });
+      carregarPainel(S.consultorAtivo);
+      checarPesquisas();
+    })
+    .withFailureHandler(function (e) { alerta('Não deu para abrir', limparErro(e)); })
+    .abrirConversa(S.token, S.consultorAtivo, id);
+}
+
+function ultimoIdDe(msgs) {
+  return (msgs && msgs.length) ? msgs[msgs.length - 1].id : null;
+}
+
+/* -------------------------------- envio ---------------------------------- */
+
+function pegarArquivos(files) {
+  if (!files || !files.length) return;
+  Array.prototype.forEach.call(files, function (f) {
+    if (f.size > 12 * 1024 * 1024) {
+      alerta('Arquivo grande', '"' + f.name + '" passa de 12 MB. Coloque o arquivo direto ' +
+             'na pasta do consultor no Drive e cite o nome dele na pergunta.');
+      return;
+    }
+    var fr = new FileReader();
+    fr.onload = function () {
+      var b64 = String(fr.result).split(',')[1] || '';
+      S.anexos.push({ nome: f.name, mime: f.type || '', dadosBase64: b64, bytes: f.size });
+      renderAnexos();
+    };
+    fr.onerror = function () { alerta('Falha na leitura', 'Não deu para ler "' + f.name + '".'); };
+    fr.readAsDataURL(f);
+  });
+  $('arquivos').value = '';
+}
+
+function renderAnexos() {
+  var alvo = $('anexos');
+  alvo.innerHTML = '';
+  if (!S.anexos.length) { alvo.classList.add('oculto'); return; }
+  alvo.classList.remove('oculto');
+  S.anexos.forEach(function (a, i) {
+    var d = document.createElement('span');
+    d.className = 'anexo-chip';
+    d.innerHTML = '<b>' + esc(a.nome) + '</b> <span>' + kb(a.bytes) + '</span>' +
+                  '<button title="Remover">&times;</button>';
+    d.querySelector('button').addEventListener('click', function () {
+      S.anexos.splice(i, 1); renderAnexos();
+    });
+    alvo.appendChild(d);
+  });
+}
+
+function kb(b) {
+  return b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+}
+
+function enviar() {
+  if (S.ocupado) return;
+  var texto = $('texto').value.trim();
+  if (!texto && !S.anexos.length) return;
+  if (!S.consultorAtivo) return alerta('Escolha um consultor', 'Selecione um consultor na lateral.');
+
+  var anexos = S.anexos.slice();
+  S.ocupado = true;
+  $('btnEnviar').disabled = true;
+  $('texto').value = '';
+  $('texto').style.height = 'auto';
+  S.anexos = [];
+  renderAnexos();
+
+  /* Eco otimista da pergunta, para a tela não ficar parada. */
+  render({
+    papel: 'operador', texto: texto, criadaEm: new Date().toISOString(),
+    anexos: anexos.map(function (a) { return { nome: a.nome, caminho: a.nome }; })
+  });
+  var pensando = bolhaPensando(anexos.length
+    ? 'Lendo os arquivos e buscando no acervo…'
+    : 'Buscando no acervo…');
+  rolar();
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      pensando.remove();
+      S.ocupado = false;
+      $('btnEnviar').disabled = false;
+      S.conversaId = r.conversaId;
+      /* remove o eco e usa as mensagens gravadas (têm id, atividade, fontes) */
+      $('fio').removeChild($('fio').lastChild);
+      (r.mensagens || []).forEach(function (m) { render(m); });
+      S.ultimoId = ultimoIdDe(r.mensagens);
+      rolar();
+      carregarPainel(S.consultorAtivo);
+      if (r.pesquisa) { avisoPesquisa(r.pesquisa); iniciarPoll(); }
+    })
+    .withFailureHandler(function (e) {
+      pensando.remove();
+      S.ocupado = false;
+      $('btnEnviar').disabled = false;
+      /* devolve o que foi digitado para o operador não perder o texto */
+      if (!$('texto').value) $('texto').value = texto;
+      S.anexos = anexos;
+      renderAnexos();
+      bolhaSistema('⚠ ' + limparErro(e));
+      rolar();
+    })
+    .enviarMensagem(S.token, S.consultorAtivo, S.conversaId, texto, anexos);
+}
+
+/* ------------------------ pesquisa em segundo plano ---------------------- */
+
+function avisoPesquisa(p) {
+  var d = document.createElement('div');
+  d.className = 'aviso-pesquisa';
+  d.id = 'avisoPesq';
+  d.innerHTML = '<b>Pesquisando:</b> ' + esc(p.tema) + ' — o consultor não tinha isso no ' +
+    'acervo. Ele está montando um dossiê, vai gravá-lo na pasta dele e responder aqui ' +
+    'em alguns minutos. Você pode continuar usando o painel.';
+  $('mensagens').insertBefore(d, $('fio'));
+}
+
+function iniciarPoll() {
+  pararPoll();
+  S.poll = setInterval(checarAgora, 7000);
+}
+
+function pararPoll() {
+  if (S.poll) { clearInterval(S.poll); S.poll = null; }
+  var a = $('avisoPesq');
+  if (a) a.remove();
+}
+
+function checarPesquisas() { checarAgora(); }
+
+function checarAgora() {
+  if (!S.conversaId || !S.consultorAtivo) return;
+  google.script.run
+    .withSuccessHandler(function (r) {
+      (r.novas || []).forEach(function (m) { render(m); S.ultimoId = m.id; });
+      if (r.novas && r.novas.length) rolar();
+
+      var rodando = (r.pesquisas || []).some(function (p) {
+        return p.situacao === 'fila' || p.situacao === 'rodando';
+      });
+      if (rodando && !S.poll) iniciarPoll();
+      if (!rodando) {
+        pararPoll();
+        var falhou = (r.pesquisas || []).filter(function (p) { return p.situacao === 'erro'; });
+        if (falhou.length && r.novas && !r.novas.length) {
+          bolhaSistema('⚠ A pesquisa sobre "' + falhou[0].tema + '" não foi concluída: ' +
+                       (falhou[0].erro || 'motivo não informado') + '.');
+        }
+      }
+    })
+    .withFailureHandler(function () { /* silencioso: é polling */ })
+    .verificarConversa(S.token, S.consultorAtivo, S.conversaId, S.ultimoId);
+}
+
+/* ----------------------------- renderização ------------------------------ */
+
+function render(m) {
+  var c = achar(S.consultorAtivo);
+  var papel = m.papel || 'consultor';
+  var div = document.createElement('div');
+  div.className = 'msg ' + papel;
+
+  var autor = papel === 'operador'
+    ? (S.usuario ? (S.usuario.nome || S.usuario.usuario) : 'Você')
+    : (papel === 'sistema' ? 'Sistema' : (c ? c.curto : 'Consultor'));
+
+  var html = '<div class="autor">' + esc(autor) +
+    '<span class="tempo">' + esc(quando(m.criadaEm)) + '</span></div>';
+
+  var topo = '';
+  if (m.atividade && m.atividade.length) {
+    topo += '<div class="atividade">' + m.atividade.map(function (a) {
+      return '<span class="chip">' + esc(a.resumo) + '</span>';
+    }).join('') + '</div>';
+  }
+  if (m.anexos && m.anexos.length) {
+    topo += '<div class="atividade">' + m.anexos.map(function (a) {
+      return '<span class="chip anexo">📎 ' + esc(a.nome) + '</span>';
+    }).join('') + '</div>';
+  }
+
+  var rodape = '';
+  if (m.arquivosLidos && m.arquivosLidos.length) {
+    rodape += '<div class="atividade" style="margin-top:10px;margin-bottom:0">' +
+      m.arquivosLidos.map(function (f) {
+        return '<span class="chip fonte">' + esc(f) + '</span>';
+      }).join('') + '</div>';
+  }
+  if (m.avisos && m.avisos.length) {
+    rodape += '<div class="atividade" style="margin-top:8px;margin-bottom:0">' +
+      m.avisos.map(function (a) {
+        return '<span class="chip" style="border-color:var(--warning);color:var(--warning)">' +
+               esc(a) + '</span>';
+      }).join('') + '</div>';
+  }
+
+  html += '<div class="bolha">' + topo + '<div class="md">' + md(m.texto || '') + '</div>' +
+          rodape + '</div>';
+  div.innerHTML = html;
+  $('fio').appendChild(div);
+  return div;
+}
+
+function bolhaSistema(texto) {
+  return render({ papel: 'sistema', texto: texto, criadaEm: new Date().toISOString() });
+}
+
+function bolhaPensando(txt) {
+  var d = document.createElement('div');
+  d.className = 'pensando';
+  d.innerHTML = '<span class="pontos"><i></i><i></i><i></i></span> ' + esc(txt) +
+    ' <span style="color:var(--text-muted)">(pode levar até alguns minutos)</span>';
+  $('fio').appendChild(d);
+  return d;
+}
+
+function rolar() {
+  var m = $('mensagens');
+  m.scrollTop = m.scrollHeight;
+}
+
+/* --------------------------- markdown mínimo ----------------------------- */
+
+function esc(t) {
+  return String(t == null ? '' : t)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function inline(t) {
+  return t
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
+             '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,
+             '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+}
+
+function md(txt) {
+  var blocos = [];
+  var t = String(txt || '').replace(/\r\n/g, '\n');
+
+  /* blocos de código saem de cena antes de qualquer outra regra */
+  t = t.replace(/```([a-z]*)\n([\s\S]*?)```/g, function (_, lang, code) {
+    blocos.push('<pre><code>' + esc(code.replace(/\n$/, '')) + '</code></pre>');
+    return '\u0000BLOCO' + (blocos.length - 1) + '\u0000';
+  });
+
+  var linhas = esc(t).split('\n');
+  var out = [];
+  var lista = null;           // 'ul' | 'ol'
+  var tabela = null;
+
+  function fecharLista() { if (lista) { out.push('</' + lista + '>'); lista = null; } }
+  function fecharTabela() {
+    if (tabela) {
+      out.push('<table>' + tabela.cab + '<tbody>' + tabela.corpo.join('') + '</tbody></table>');
+      tabela = null;
+    }
+  }
+
+  for (var i = 0; i < linhas.length; i++) {
+    var l = linhas[i];
+    var bruta = l.trim();
+
+    if (/^\u0000BLOCO\d+\u0000$/.test(bruta)) {
+      fecharLista(); fecharTabela();
+      out.push(blocos[parseInt(bruta.replace(/\D/g, ''), 10)]);
+      continue;
+    }
+    if (!bruta) { fecharLista(); fecharTabela(); continue; }
+
+    /* tabela markdown */
+    if (/^\|.*\|$/.test(bruta)) {
+      var celulas = bruta.replace(/^\||\|$/g, '').split('|').map(function (c) { return c.trim(); });
+      if (/^[\s|:-]+$/.test(bruta)) continue;                 // linha separadora
+      if (!tabela) {
+        fecharLista();
+        tabela = {
+          cab: '<thead><tr>' + celulas.map(function (c) {
+            return '<th>' + inline(c) + '</th>';
+          }).join('') + '</tr></thead>',
+          corpo: []
+        };
+      } else {
+        tabela.corpo.push('<tr>' + celulas.map(function (c) {
+          return '<td>' + inline(c) + '</td>';
+        }).join('') + '</tr>');
+      }
+      continue;
+    }
+    fecharTabela();
+
+    var h = bruta.match(/^(#{1,4})\s+(.*)$/);
+    if (h) {
+      fecharLista();
+      var n = h[1].length;
+      out.push('<h' + n + '>' + inline(h[2]) + '</h' + n + '>');
+      continue;
+    }
+    if (/^([-*_]\s*){3,}$/.test(bruta)) { fecharLista(); out.push('<hr>'); continue; }
+    if (/^&gt;\s?/.test(bruta)) {
+      fecharLista();
+      out.push('<blockquote>' + inline(bruta.replace(/^&gt;\s?/, '')) + '</blockquote>');
+      continue;
+    }
+    var li = bruta.match(/^[-*+]\s+(.*)$/);
+    if (li) {
+      if (lista !== 'ul') { fecharLista(); out.push('<ul>'); lista = 'ul'; }
+      out.push('<li>' + inline(li[1]) + '</li>');
+      continue;
+    }
+    var ol = bruta.match(/^\d+[.)]\s+(.*)$/);
+    if (ol) {
+      if (lista !== 'ol') { fecharLista(); out.push('<ol>'); lista = 'ol'; }
+      out.push('<li>' + inline(ol[1]) + '</li>');
+      continue;
+    }
+
+    fecharLista();
+    out.push('<p>' + inline(bruta) + '</p>');
+  }
+  fecharLista(); fecharTabela();
+  return out.join('');
+}
+
+/* ------------------------------ acessórios ------------------------------- */
+
+function atualizarAcervo() {
+  if (!S.consultorAtivo) return;
+  $('btnAcervo').disabled = true;
+  $('btnAcervo').textContent = 'Lendo a pasta…';
+  google.script.run
+    .withSuccessHandler(function (r) {
+      $('btnAcervo').disabled = false;
+      $('btnAcervo').textContent = 'Atualizar acervo';
+      S.acervo = { pasta: r.pasta, total: r.total, geradoEm: r.geradoEm };
+      renderCabecalho();
+      bolhaSistema('Acervo relido: **' + r.pasta + '** com ' + r.total + ' arquivos.');
+      rolar();
+    })
+    .withFailureHandler(function (e) {
+      $('btnAcervo').disabled = false;
+      $('btnAcervo').textContent = 'Atualizar acervo';
+      alerta('Falha ao reler o acervo', limparErro(e));
+    })
+    .reindexarAcervo(S.token, S.consultorAtivo);
+}
+
+function verDiagnostico() {
+  google.script.run
+    .withSuccessHandler(function (linhas) {
+      var html = '<table>' + linhas.map(function (l) {
+        return '<tr><td>' + esc(l.item) + '</td><td><b>' + esc(l.valor) + '</b></td></tr>';
+      }).join('') + '</table>';
+      if (S.acervo && S.acervo.url) {
+        html += '<p style="margin-top:14px;font-size:12.5px">' +
+          '<a href="' + esc(S.acervo.url) + '" target="_blank">Abrir a pasta do consultor no Drive</a></p>';
+      }
+      abrirModal('Diagnóstico', 'Estado do sistema. Nenhuma chave é exibida aqui.', html);
+    })
+    .withFailureHandler(function (e) { alerta('Diagnóstico', limparErro(e)); })
+    .diagnostico(S.token);
+}
+
+function abrirModal(titulo, sub, html) {
+  $('modalTitulo').textContent = titulo;
+  $('modalSub').textContent = sub || '';
+  $('modalCorpo').innerHTML = html || '';
+  $('ov').classList.add('on');
+}
+
+function alerta(titulo, texto) {
+  abrirModal(titulo, '', '<p style="font-size:13px;line-height:1.6">' + esc(texto) + '</p>');
+}
+</script>
