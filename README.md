@@ -11,6 +11,11 @@ arquivos que usou.
 | Direito Bancário | pasta do Drive do consultor bancário |
 | Comercial | pasta do Drive do consultor comercial |
 
+> **No ar:** https://script.google.com/a/borgesmacedoadvocacia.com.br/macros/s/AKfycbzP1Sf3K8rbFT7IvrwI8ibpW_KhPySy23za9QcyPsMAWNsCgMTfhJub894ENiXs10urtw/exec
+>
+> A URL precisa levar o `/a/borgesmacedoadvocacia.com.br/`. Sem o domínio, o Chrome com várias
+> contas logadas reescreve para `/macros/u/N/s/...` e devolve "Não foi possível abrir o arquivo".
+
 Roda inteiro dentro do **Google Apps Script** (é lá que fica a chave da API do Claude) e
 conversa com o **Claude Opus 5** pela API da Anthropic.
 
